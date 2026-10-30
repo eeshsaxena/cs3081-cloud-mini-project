@@ -3,7 +3,7 @@
 Knowledge distillation of a command-parsing model (`phi3.5` teacher → `pythia-70m` student),
 served on a local k3d Kubernetes cluster with SeaweedFS object storage.
 
-> **Student:** Eesh Saxena · **Roll number:** 230101032 · **Repo:** _<github link>_
+> **Student:** Eesh Saxena · **Roll number:** 230101032 · **Repo:** https://github.com/eeshsaxena/cs3081-cloud-mini-project
 
 ## What it does
 Takes one English command and returns a four-key JSON object:
