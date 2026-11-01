@@ -147,8 +147,8 @@ allows or packet S04 would be allowed. Full working in [`network/subnets.md`](..
 stages: lint → tests (6 test files, 22 tests) → model evaluation from the `model-v1` Release → quality
 gate `score.py --min-validity 95` → gitleaks (reports nothing). **On the trained model the pipeline is
 green** (the evaluate job scored the Release model at 99 % validity ≥ 95). The deliberately-failing run
-on the untrained base (gate at 0 % validity) is run 41280807351:
-<https://github.com/eeshsaxena/cs3081-cloud-mini-project/actions/runs/41280807351>. `AI_USE.md`
+on the untrained base (gate at 0 % validity) is run 41300788338:
+<https://github.com/eeshsaxena/cs3081-cloud-mini-project/actions/runs/41300788338>. `AI_USE.md`
 records AI usage.
 
 ## 7. Task 7 — Performance, cost, review
