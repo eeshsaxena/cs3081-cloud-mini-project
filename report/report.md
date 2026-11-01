@@ -79,6 +79,9 @@ distribution* per token (soft targets). (c) It is not possible here because the 
 through Ollama, which returns text only — we never see its logits, and the vocabularies differ.
 (d) Limitation: a 70M model on ~1,500 noisy labels underfits the slot rules; errors are real, not
 fabricated.
+**Limitations / improvements.** Student full_frame (43 %) trails the teacher (48 %) — a 70M model
+underfits; more epochs, a larger student, or a cleaner teacher prompt to cut label noise would help.
+True logit-level distillation would need a same-vocabulary teacher we can read logits from.
 
 ## 3. Task 3 — Inference service in a container
 **Architecture.** FastAPI, port 8000: `POST /parse`, `GET /healthz`, `GET /readyz`. Config from
@@ -141,6 +144,9 @@ management, tcp 1024–65535 from app (replies). Outbound: tcp 8000 to app, tcp 
 (replies). **Explanation.** A NACL is stateless, so replies need their own rules; and because the
 first matching (lowest-numbered) rule wins, the `198.51.100.0/24` deny must sit below the 80/443
 allows or packet S04 would be allowed. Full working in [`network/subnets.md`](../network/subnets.md).
+**Limitations / improvements.** Largest-first contiguous allocation leaves gaps between blocks and a
+subnet can't grow in place; defining the plan as code (Terraform/CDK) would make it reproducible. A
+NACL is coarse (subnet-wide and stateless); per-instance, stateful security groups would be finer.
 
 ## 6. Task 6 — Reproducibility, testing, CI/CD
 `make up` builds + deploys from a fresh clone in ≤ 3 commands; `make down` deletes the cluster. CI
@@ -150,6 +156,9 @@ green** (the evaluate job scored the Release model at 99 % validity ≥ 95). The
 on the untrained base (gate at 0 % validity) is run 41300788338:
 <https://github.com/eeshsaxena/cs3081-cloud-mini-project/actions/runs/41300788338>. `AI_USE.md`
 records AI usage.
+**Limitations / improvements.** The cluster integration test runs on a single-node k3d (via the
+`live-cluster` workflow), not a true multi-node cluster, and test coverage isn't gated. Adding a
+coverage threshold and a smoke deploy on every PR would harden the pipeline further.
 
 ## 7. Task 7 — Performance, cost, review
 **Load test (cluster, standard command).** Locust, 4 users, 90 s, against the Traefik Ingress (2
