@@ -27,8 +27,24 @@ def _s3_client():
         aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", ""),
         aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
         region_name=os.environ.get("AWS_REGION", "us-east-1"),
-        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+        # Retries + timeouts keep large uploads alive when a `kubectl port-forward` tunnel drops a
+        # connection mid-transfer (common when seeding the ~220 MB model through a port-forward).
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+            retries={"max_attempts": 10, "mode": "adaptive"},
+            read_timeout=120,
+            connect_timeout=30,
+            tcp_keepalive=True,
+        ),
     )
+
+
+def _transfer_config():
+    """Single-threaded multipart with modest parts: gentle on a port-forward, each part retriable."""
+    from boto3.s3.transfer import TransferConfig
+    mb = 1024 * 1024
+    return TransferConfig(multipart_threshold=16 * mb, multipart_chunksize=16 * mb, use_threads=False)
 
 
 def ensure_bucket(bucket):
@@ -71,7 +87,7 @@ def read_text(bucket, path):
 
 def upload_file(bucket, path, local_file):
     if use_s3():
-        _s3_client().upload_file(local_file, bucket, path)
+        _s3_client().upload_file(local_file, bucket, path, Config=_transfer_config())
     else:
         with open(local_file, "rb") as f:
             write_bytes(bucket, path, f.read())
