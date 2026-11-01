@@ -50,6 +50,22 @@ def validate(raw):
     return obj
 
 
+def _resolve_model_dir(model_uri):
+    """Return a local directory holding the model files.
+
+    `s3://bucket/prefix` is downloaded from object storage (the deployed path). A plain local path or
+    `file://path` is used as-is, which lets the service and CI run against a model on disk without
+    object storage.
+    """
+    if model_uri.startswith("s3://"):
+        return _download_model(model_uri)
+    if model_uri.startswith("file://"):
+        model_uri = model_uri[len("file://"):]
+    if not os.path.isdir(model_uri):
+        raise RuntimeError(f"MODEL_URI local path not found: {model_uri}")
+    return model_uri
+
+
 def _download_model(model_uri):
     assert model_uri.startswith("s3://"), "MODEL_URI must be s3://<bucket>/<prefix>"
     bucket, _, prefix = model_uri[len("s3://"):].partition("/")
@@ -85,7 +101,7 @@ class Runner:
 
     def load(self):
         from transformers import AutoModelForCausalLM, AutoTokenizer
-        local_dir = _download_model(os.environ["MODEL_URI"])
+        local_dir = _resolve_model_dir(os.environ["MODEL_URI"])
         self.tokenizer = AutoTokenizer.from_pretrained(local_dir)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token

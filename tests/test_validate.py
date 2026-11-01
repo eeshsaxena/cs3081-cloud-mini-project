@@ -1,4 +1,18 @@
+import pytest
+
 import model_runner as mr
+
+
+def test_resolve_model_dir_local(tmp_path):
+    d = tmp_path / "m"
+    d.mkdir()
+    assert mr._resolve_model_dir(str(d)) == str(d)
+    assert mr._resolve_model_dir("file://" + str(d)) == str(d)
+
+
+def test_resolve_model_dir_missing():
+    with pytest.raises(RuntimeError):
+        mr._resolve_model_dir("/no/such/model/dir")
 
 
 def test_valid_output():

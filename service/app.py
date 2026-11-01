@@ -13,6 +13,7 @@ Configuration (environment variables; AWS_* come from a Kubernetes Secret):
 import os
 import socket
 import threading
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response
@@ -23,7 +24,6 @@ import model_runner
 MODEL_VERSION = os.environ.get("MODEL_VERSION", "unknown")
 POD_NAME = os.environ.get("POD_NAME") or os.environ.get("HOSTNAME") or socket.gethostname()
 
-app = FastAPI(title="command-parser")
 runner = model_runner.Runner()
 
 
@@ -35,9 +35,15 @@ def _safe_load():
         print(f"model load failed: {e}", flush=True)
 
 
-@app.on_event("startup")
-def _startup():
+@asynccontextmanager
+async def lifespan(_app):
+    # Load the model in a background thread so start-up returns immediately; /readyz stays 503 until
+    # the weights finish loading (the readiness probe holds traffic during the cold-start download).
     threading.Thread(target=_safe_load, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="command-parser", lifespan=lifespan)
 
 
 class ParseIn(BaseModel):
