@@ -28,6 +28,15 @@ datasets/
 kubeconfig*
 *.tmp
 
+# LaTeX build artifacts (keep report.tex + report.pdf only)
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
 # OS
 .DS_Store
 Thumbs.db
