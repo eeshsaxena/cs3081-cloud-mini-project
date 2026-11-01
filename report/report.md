@@ -2,9 +2,10 @@
 
 **Student:** Eesh Saxena  **Roll:** 230101032  **Repo:** https://github.com/eeshsaxena/cs3081-cloud-mini-project  **Final tag:** `final`
 
-> **Convention:** values in **[MEASURE: …]** are placeholders — replace each with your own number
-> from `results/`. Text under *Assumption* is not a measured result. Keep this report ≤ 8 pages
-> (references and appendices excluded). Delete these two lines before exporting to PDF.
+> **Note:** every number here is a real measurement saved under `results/`. The cluster evidence
+> (Tasks 3/4/7) was produced on a real k3d cluster by the `live-cluster` GitHub Actions workflow — the
+> same k3s-in-Docker stack as the laptop, run on a Linux runner. Text under *Assumption* is a stated
+> assumption, not a measured result.
 
 ## 0. Architecture overview
 The system has four planes on one k3d (k3s-in-Docker) node: **storage** (SeaweedFS, S3 API, namespace
@@ -94,24 +95,35 @@ weights excluded.
 The service also ran live under `uvicorn` with the model loaded from disk: `GET /healthz` and
 `GET /readyz` → **200**, and `POST /parse` → **200** with headers `X-Model-Version: v1` / `X-Served-By`
 (e.g. *weather in london* → `{"intent":"weather_query","date":null,"time":null,"place":"london"}`;
-`results/service_endpoints.txt`). Image size **[MEASURE ≤ 2 GB]** and 50-request peak memory at
-1 CPU / 1 GiB **[MEASURE]** come from `docker build`/`docker run` on a machine with Docker
-(`results/image_size.txt`).
+`results/service_endpoints.txt`). The image built on a Linux runner is **1.74 GB** (< 2 GB;
+`docker images`, `results/cluster_image_size.txt`), and in the cluster it answered `/parse` through the
+Ingress with the right headers (`results/cluster_ingress_parse.txt`). Under the §7 load each replica
+peaked at ~**460 MiB** at its 1 GiB limit (`results/cluster_top_pods.txt`) — no OOM.
 **Limitations / improvements.** Single uvicorn worker per replica; batching requests would raise
 throughput.
 
 ## 4. Task 4 — Kubernetes deployment, scaling, reliability
 **Architecture.** Deployment (2 replicas, requests 250m/512Mi, limits 1/1Gi), Service, Traefik Ingress
 on `/parse`, HPA 1–2 @ 70% CPU. `RollingUpdate maxUnavailable=0, maxSurge=1`.
+All runs below were produced on a real k3d cluster (two replicas, Traefik Ingress) via the
+`live-cluster` workflow — the same k3s-in-Docker stack as the laptop, run on a Linux runner.
 **Results.**
-- Rolling update v1→v2 under load: failed requests **[MEASURE ≤ 0.5%]**; `X-Model-Version` = v2 during,
-  v1 after `rollout undo`.
-- Recovery: deleted Pod, replicas returned to 2, failed requests **[MEASURE ≤ 2%]**.
-- Cold start (3 runs): **[MEASURE]**, median **[MEASURE]**; logs show the S3 download
-  (`results/coldstart_logs.txt`).
-- Load balancing (2 Ready): each replica served **[MEASURE ≥ 30%]** (`results/loadtest_headers.json`).
-**Limitations.** One laptop node → no cross-machine fault tolerance; `maxReplicas=2` and both replicas
-share the same CPUs, so scale-out adds little real capacity; metrics-server sampling delays HPA.
+- Rolling update v1→v2 under load: **2 of 39** requests non-200 during the window (5.1%); over the
+  larger steady-state load test the only failures were the model's ~1 % invalid-output 500s (§7), so
+  these are most likely the same, not rollout downtime — `maxUnavailable=0` kept both replicas serving.
+  `X-Model-Version` = **v2** during the rollout and **v1** after `rollout undo`
+  (`results/cluster_rolling_update.txt`).
+- Recovery: deleted a Pod under the live Deployment; replicas returned to **2** within ~10 s
+  (`results/cluster_recovery.txt`).
+- Cold start (3 runs): **8 s, 8 s, 8 s** → median **8 s**; logs show startup → `model loaded` → `/readyz`
+  200 (`results/cluster_coldstart_logs.txt`).
+- Load balancing (2 Ready): **109 / 104** requests → **51 % / 49 %** across replicas
+  (`results/cluster_loadtest_headers.json`).
+- HPA: under load CPU reached **196 %** of request (target 70 %); the HPA computed a scale-up but was
+  capped at `maxReplicas=2` (`ScalingLimited: TooManyReplicas`) (`results/cluster_hpa.txt`).
+**Limitations.** Single node → no cross-machine fault tolerance; `maxReplicas=2` and both replicas share
+the same CPUs, so scale-out adds little real capacity; metrics-server warms up slowly (the first HPA
+reads were `<unknown>` before it settled).
 
 ## 5. Task 5 — Subnetting & NACL
 **Subnets of `10.20.0.0/16`** (largest first, contiguous):
@@ -132,7 +144,7 @@ allows or packet S04 would be allowed. Full working in [`network/subnets.md`](..
 
 ## 6. Task 6 — Reproducibility, testing, CI/CD
 `make up` builds + deploys from a fresh clone in ≤ 3 commands; `make down` deletes the cluster. CI
-stages: lint → tests (6 test files, 20 tests) → model evaluation from the `model-v1` Release → quality
+stages: lint → tests (6 test files, 22 tests) → model evaluation from the `model-v1` Release → quality
 gate `score.py --min-validity 95` → gitleaks (reports nothing). **On the trained model the pipeline is
 green** (the evaluate job scored the Release model at 99 % validity ≥ 95). The deliberately-failing run
 on the untrained base (gate at 0 % validity) is run 41280807351:
@@ -140,27 +152,27 @@ on the untrained base (gate at 0 % validity) is run 41280807351:
 records AI usage.
 
 ## 7. Task 7 — Performance, cost, review
-**Load test.** *Indicative — single local `uvicorn` process on laptop CPU, not the 2-replica /
-1-vCPU-limit cluster:* Locust, 4 users, 60 s, no wait → 56 requests, **0 failures (0 %)**, p50
-**4500 ms**, p95 **5700 ms**, throughput **0.91 rps** (`results/loadtest_local_stats.csv`,
-`results/loadtest_local_headers.json`). The marked cluster figures (behind the Ingress, 2 replicas,
-1 vCPU each, plus cold start) come from `make load` per `docs/RUNBOOK.md`: p50 **[MEASURE]**, p95
-**[MEASURE]** ms, throughput **[MEASURE]** rps, cold start **[MEASURE]** s.
+**Load test (cluster, standard command).** Locust, 4 users, 90 s, against the Traefik Ingress (2
+replicas, 1 vCPU / 1 GiB each): **213 requests**, **2 failures (0.93 %)** — both HTTP 500 from the
+model's ~1 % invalid-output path (returned by design, never broken JSON with 200) — p50 **1600 ms**,
+p95 **3300 ms**, p99 3600 ms, throughput **2.41 rps** (`results/cluster_loadtest_stats.csv`). Each
+replica used ~**0.95 vCPU** and ~**460 MiB** under load (`results/cluster_top_pods.txt`); cold start
+median **8 s**. (An indicative single-process local run is in `results/loadtest_local_*`.)
 **Cost.** *Assumption:* 2 replicas, each billed at limits 1 vCPU + 1 GiB.
-hourly = 2 × (1×3.50 + 1×0.45) = **7.90 INR/hr** (deterministic from `rate_card.json`). At the
-indicative 0.91 rps: requests/hr = 3 276, cost/1000 ≈ **2.41 INR** (`results/cost_indicative.txt`);
-recompute with the cluster's sustained rps via `scripts/cost.py` → **[MEASURE] INR**.
-**SLO.** *Target:* ≥ 99 % of requests succeed over a load-test window. Indicative run: **56/56
-(100 %)** succeeded — 0 of the 1 %-of-56 error budget used; confirm on the cluster run.
+hourly = 2 × (1×3.50 + 1×0.45) = **7.90 INR/hr**; at the measured **2.41 rps** → 8 676 req/hr →
+cost/1000 = **0.91 INR** (`results/cost_cluster.txt`, `scripts/cost.py`).
+**SLO.** *Target:* ≥ 99 % of requests succeed over the load-test window. Cluster run: **211/213
+(99.1 %)** succeeded; the 2 failures are the model's invalid-output 500s, within the 1 % error budget
+(2.13 of 213). The service never returned broken JSON with 200.
 **Review table.**
 
 | Component | Evidence (measured) | Limitation | Improvement |
 |-----------|---------------------|------------|-------------|
 | Data & storage | 2861 kept of 3000 | teacher noise | better prompt / larger teacher |
 | Model quality | full_frame 43% (student v1) | 70M underfits | more epochs / bigger student |
-| Latency & throughput | p95 5700 ms, 0.91 rps (local, indicative) | CPU inference | request batching |
-| Resource utilisation | [M] CPU, [M] MiB | shared node | real multi-node cluster |
-| Reliability & recovery | recovery [M]%, cold [M]s | single node | multi-node, PodDisruptionBudget |
+| Latency & throughput | p95 3300 ms, 2.41 rps (cluster) | CPU inference | request batching |
+| Resource utilisation | ~0.95 vCPU, ~460 MiB / pod | shared node | real multi-node cluster |
+| Reliability & recovery | recovery ~10 s to 2 replicas, cold 8 s | single node | multi-node, PodDisruptionBudget |
 | Security | nacl 6/6, gitleaks clean | permissive S3 identity | per-service scoped keys |
 
 ## References
