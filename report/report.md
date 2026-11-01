@@ -91,8 +91,12 @@ weights excluded.
 **10/10** validation commands returned schema-valid 200 objects, an `"not json"` output →
 `validate()` = `None` → the 500 path, and single-request latency ≈ **2.2 s** on laptop CPU
 (`results/service_local_inference.txt`); the containerised cluster p95 is measured under load in §7.
-Image size **[MEASURE ≤ 2 GB]** and 50-request peak memory at 1 CPU / 1 GiB **[MEASURE]** come from the
-`docker build`/`docker run` on a machine with Docker (`results/image_size.txt`, curl outputs).
+The service also ran live under `uvicorn` with the model loaded from disk: `GET /healthz` and
+`GET /readyz` → **200**, and `POST /parse` → **200** with headers `X-Model-Version: v1` / `X-Served-By`
+(e.g. *weather in london* → `{"intent":"weather_query","date":null,"time":null,"place":"london"}`;
+`results/service_endpoints.txt`). Image size **[MEASURE ≤ 2 GB]** and 50-request peak memory at
+1 CPU / 1 GiB **[MEASURE]** come from `docker build`/`docker run` on a machine with Docker
+(`results/image_size.txt`).
 **Limitations / improvements.** Single uvicorn worker per replica; batching requests would raise
 throughput.
 
@@ -128,25 +132,33 @@ allows or packet S04 would be allowed. Full working in [`network/subnets.md`](..
 
 ## 6. Task 6 — Reproducibility, testing, CI/CD
 `make up` builds + deploys from a fresh clone in ≤ 3 commands; `make down` deletes the cluster. CI
-stages: lint → tests (6 test files) → model evaluation from the Release → quality gate
-`score.py --min-validity 95` → gitleaks (reports nothing). Deliberately-failing run (untrained base):
-**[LINK to the failed run]**. `AI_USE.md` records AI usage.
+stages: lint → tests (6 test files, 20 tests) → model evaluation from the `model-v1` Release → quality
+gate `score.py --min-validity 95` → gitleaks (reports nothing). **On the trained model the pipeline is
+green** (the evaluate job scored the Release model at 99 % validity ≥ 95). The deliberately-failing run
+on the untrained base (gate at 0 % validity) is run 41280807351:
+<https://github.com/eeshsaxena/cs3081-cloud-mini-project/actions/runs/41280807351>. `AI_USE.md`
+records AI usage.
 
 ## 7. Task 7 — Performance, cost, review
-**Load test (standard command).** p50 **[MEASURE]**, p95 **[MEASURE]** ms, throughput **[MEASURE]**
-rps, error rate **[MEASURE]**, cold start **[MEASURE]** s.
+**Load test.** *Indicative — single local `uvicorn` process on laptop CPU, not the 2-replica /
+1-vCPU-limit cluster:* Locust, 4 users, 60 s, no wait → 56 requests, **0 failures (0 %)**, p50
+**4500 ms**, p95 **5700 ms**, throughput **0.91 rps** (`results/loadtest_local_stats.csv`,
+`results/loadtest_local_headers.json`). The marked cluster figures (behind the Ingress, 2 replicas,
+1 vCPU each, plus cold start) come from `make load` per `docs/RUNBOOK.md`: p50 **[MEASURE]**, p95
+**[MEASURE]** ms, throughput **[MEASURE]** rps, cold start **[MEASURE]** s.
 **Cost.** *Assumption:* 2 replicas, each billed at limits 1 vCPU + 1 GiB.
-hourly = 2 × (1×3.50 + 1×0.45) = **7.90 INR/hr**; requests/hr = rps × 3600 = **[MEASURE]**;
-cost/1000 = 7.90 / requests_per_hour × 1000 = **[MEASURE] INR** (`scripts/cost.py`).
-**SLO.** *Target:* 99% of requests succeed over one load-test run (window). Error budget = 1% of
-**[MEASURE total requests]** = **[MEASURE]** requests; used **[MEASURE]**.
+hourly = 2 × (1×3.50 + 1×0.45) = **7.90 INR/hr** (deterministic from `rate_card.json`). At the
+indicative 0.91 rps: requests/hr = 3 276, cost/1000 ≈ **2.41 INR** (`results/cost_indicative.txt`);
+recompute with the cluster's sustained rps via `scripts/cost.py` → **[MEASURE] INR**.
+**SLO.** *Target:* ≥ 99 % of requests succeed over a load-test window. Indicative run: **56/56
+(100 %)** succeeded — 0 of the 1 %-of-56 error budget used; confirm on the cluster run.
 **Review table.**
 
 | Component | Evidence (measured) | Limitation | Improvement |
 |-----------|---------------------|------------|-------------|
 | Data & storage | 2861 kept of 3000 | teacher noise | better prompt / larger teacher |
 | Model quality | full_frame 43% (student v1) | 70M underfits | more epochs / bigger student |
-| Latency & throughput | p95 [M] ms, [M] rps | CPU inference | request batching |
+| Latency & throughput | p95 5700 ms, 0.91 rps (local, indicative) | CPU inference | request batching |
 | Resource utilisation | [M] CPU, [M] MiB | shared node | real multi-node cluster |
 | Reliability & recovery | recovery [M]%, cold [M]s | single node | multi-node, PodDisruptionBudget |
 | Security | nacl 6/6, gitleaks clean | permissive S3 identity | per-service scoped keys |
