@@ -6,6 +6,23 @@ evidence the report and marking need.
 
 ---
 
+## Status (what is already done vs what needs your machine)
+
+**Done and pushed** (github.com/eeshsaxena/cs3081-cloud-mini-project):
+- Repo created (public); Days 1–4 **code** committed and pushed.
+- Task 1: 3000 labelled → 2861 cleaned (`results/clean_counts.json`).
+- Task 2: student v1/v2 trained; **model-v1 Release published** (`v1.tar.gz`, `v2.tar.gz`); eval in
+  `results/` (student v1: 99% valid JSON, 43% full_frame vs teacher 48%) — quality gate passes.
+- Task 3: service inference verified locally (`results/service_local_inference.txt`).
+- Task 5: NACL 6/6, subnet plan. Task 6: CI runs on every push. Task 7: `cost.py` (7.90 INR/hr).
+
+**You still need to run (needs Docker + a k3d cluster + Ollama on your machine):** the Task 3 image
+size, Task 4 reliability demos, and the Task 7 Locust load test below — each fills a `[MEASURE]` in
+`report/report.md`. Then: trigger the CI "base" run for the gate-failure link, write the handwritten
+`230101032.pdf`, export `report/report.pdf`, and finally `git tag final && git push --tags`.
+
+---
+
 ## 4-day plan & commit schedule
 
 Build is already done in the repo; spread the **commits** (and the heavy runs) across four days so
@@ -26,17 +43,14 @@ git push                     # after you create the GitHub repo (see below)
 git tag final && git push --tags
 ```
 
-### Create the GitHub repo (day 1, once)
-```bash
-gh auth login                                  # if not already
-gh repo create cloud-mini-project --private --source . --remote origin --push
-```
+### Create the GitHub repo — DONE
+Public repo `eeshsaxena/cs3081-cloud-mini-project` already created and pushed.
 
-### Publish the model as a Release (day 3; weights are NOT in git)
+### Publish the model as a Release — DONE
+`model-v1` Release already holds `v1.tar.gz` + `v2.tar.gz` (checksums verified against
+`models/<v>/model.sha256`). To re-publish after retraining:
 ```bash
-gh release create model-v1 models/v1.tar.gz models/v2.tar.gz \
-  --title "Student model v1/v2" --notes "pythia-70m sequence-level distilled. See model.sha256."
-sha256sum models/v1.tar.gz          # must equal models/v1/model.sha256
+gh release upload model-v1 models/v1.tar.gz models/v2.tar.gz --clobber
 ```
 
 ---
